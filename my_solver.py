@@ -28,6 +28,21 @@ def conv2d(x, kernel):
     result = np.sum(windows * kernel, axis=(2, 3))
     return result
 
+def mask_board(board:np.ndarray) -> np.ndarray:
+    for x, y in np.argwhere(board == 4):
+        for dx in [-1, 0, 1]:
+            for dy in [-1, 0, 1]:
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < board.shape[0] and 0 <= ny < board.shape[1] and board[nx, ny] == 0:
+                    board[nx, ny] = 1
+    for x, y in np.argwhere(board == 3):
+        for dx in [-1, 1]:
+            for dy in [-1, 1]:
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < board.shape[0] and 0 <= ny < board.shape[1] and board[nx, ny] == 0:
+                    board[nx, ny] = 1
+    return board
+
 def generate_attack_map(board:np.ndarray, ships):
     res = np.zeros_like(board)
     if np.any(board == 3):
@@ -45,8 +60,6 @@ def generate_attack_map(board:np.ndarray, ships):
                     if left-1 < 0 or board[left-1, y] == 1:
                         break
                     if left-2 >=0:
-                        if(board[left-2, y] == 3 or board[left-2, y] == 4):
-                            break
                         if y-1 >=0 and (board[left-1, y-1] == 3 or board[left-1, y-1] == 4):
                                 break
                         if y+1 < board.shape[1] and (board[left-1, y+1] == 3 or board[left-1, y+1] == 4):
@@ -56,8 +69,6 @@ def generate_attack_map(board:np.ndarray, ships):
                     if right+1 >= board.shape[0] or board[right+1, y] == 1:
                         break
                     if right+2 < board.shape[0]:
-                        if(board[right+2, y] == 3 or board[right+2, y] == 4):
-                            break
                         if y-1 >=0 and (board[right+1, y-1] == 3 or board[right+1, y-1] == 4):
                                 break
                         if y+1 < board.shape[1] and (board[right+1, y+1] == 3 or board[right+1, y+1] == 4):
@@ -67,8 +78,6 @@ def generate_attack_map(board:np.ndarray, ships):
                     if up-1 < 0 or board[x, up-1] == 1:
                         break
                     if up-2 >=0:
-                        if(board[x, up-2] == 3 or board[x, up-2] == 4):
-                            break
                         if x-1 >=0 and (board[x-1, up-1] == 3 or board[x-1, up-1] == 4):
                                 break
                         if x+1 < board.shape[0] and (board[x+1, up-1] == 3 or board[x+1, up-1] == 4):
@@ -78,8 +87,6 @@ def generate_attack_map(board:np.ndarray, ships):
                     if down+1 >= board.shape[1] or board[x, down+1] == 1:
                         break
                     if down+2 < board.shape[1]:
-                        if(board[x, down+2] == 3 or board[x, down+2] == 4):
-                            break
                         if x-1 >=0 and (board[x-1, down+1] == 3 or board[x-1, down+1] == 4):
                                 break
                         if x+1 < board.shape[0] and (board[x+1, down+1] == 3 or board[x+1, down+1] == 4):
@@ -90,7 +97,7 @@ def generate_attack_map(board:np.ndarray, ships):
                 len_h = right - left + 1
                 len_v = down - up + 1
                 pass_v = len_h>=2 and np.any(np.convolve(area_h == 3, np.ones(2, dtype=int), mode='valid') == 2)
-                pass_h = len_v>=2 and np.any(np.convolve(area_v == 3, np.ones(2, dtype=int), mode='valid') == 2) and not pass_v
+                pass_h = len_v>=2 and np.any(np.convolve(area_v == 3, np.ones(2, dtype=int), mode='valid') == 2)
                 if len_h >= size and not pass_h:
                     area_h[area_h == 3] = 0
                     conv_h = np.convolve(area_h, kernel, mode='valid')
@@ -106,13 +113,6 @@ def generate_attack_map(board:np.ndarray, ships):
         res[poss[:, 0], poss[:, 1]] = -1
     else:
         print("Generating attack map based on empty cells...")
-        for x, y in np.argwhere(board == 4):
-            board[x, y] = 1
-            for dx in [-1, 0, 1]:
-                for dy in [-1, 0, 1]:
-                    nx, ny = x + dx, y + dy
-                    if 0 <= nx < board.shape[0] and 0 <= ny < board.shape[1] and board[nx, ny] == 0:
-                        board[nx, ny] = 1
         for size in ships:
             weights = ships[size][0]
             if weights == 0:
@@ -137,6 +137,7 @@ def generate_ships(conf):
 def try_attack():
     print("My turn to attack.")
     board = get_board(baseurl, player)
+    board = mask_board(board)
     opponent_ships = get_ships_info(baseurl, player)
     attacks = generate_attack_map(board, opponent_ships)
     x, y = np.unravel_index(np.random.choice(np.where(attacks.ravel() == attacks.max())[0]), attacks.shape)

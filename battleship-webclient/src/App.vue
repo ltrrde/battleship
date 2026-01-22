@@ -80,6 +80,7 @@ const boardLegend: Record<number, { label: string; tone: string }> = {
   3: { label: '命中', tone: 'hit' },
   4: { label: '击沉', tone: 'sunk' },
   5: { label: '终结', tone: 'victory' },
+  6: { label: '推测空', tone: 'guess'}
 }
 
 const boardLength = computed(() => {
@@ -258,7 +259,7 @@ async function fetchBoard() {
               const ny = y + dy
               if (nx >= 0 && nx < board.self.length && ny >= 0 && ny < board.self.length) {
                 if (board.self[nx]?.[ny] === 0) {
-                  board.self[nx][ny] = 1
+                  board.self[nx][ny] = 6
                 }
               }
             }
@@ -275,7 +276,7 @@ async function fetchBoard() {
               const ny = y + dy
               if (nx >= 0 && nx < board.opponent.length && ny >= 0 && ny < board.opponent.length) {
                 if (board.opponent[nx]?.[ny] === 0) {
-                  board.opponent[nx][ny] = 1
+                  board.opponent[nx][ny] = 6
                 }
               }
             }
@@ -905,7 +906,7 @@ button:hover:not(:disabled) {
 }
 
 .tone-miss {
-  background: rgba(14, 165, 233, 0.35);
+  background: rgba(14, 165, 233, 0.75);
 }
 
 .tone-ally {
@@ -922,6 +923,10 @@ button:hover:not(:disabled) {
 
 .tone-victory {
   background: rgba(250, 204, 21, 0.75);
+}
+
+.tone-guess {
+  background: rgba(14, 165, 233, 0.35);
 }
 
 .selected {
