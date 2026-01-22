@@ -10,6 +10,8 @@ type ShipDraft = {
 type BoardPayload = {
   self: number[][]
   opponent: number[][]
+  player0?: number[][]
+  player1?: number[][]
 }
 
 type ShipStatusPayload = {
@@ -243,15 +245,19 @@ async function fetchStatus() {
 async function fetchBoard() {
   try {
     const board = await request<BoardPayload>(`/game/board/${playerId.value}`)
+    if (playerId.value === 2) {
+      board.self = board.player0 || board.self
+      board.opponent = board.player1 || board.opponent
+    }
     board.self.forEach((row, x) => {
       row.forEach((value, y) => {
-        if(value === 4) {
-          for(let dx = -1; dx <= 1; dx++) {
-            for(let dy = -1; dy <= 1; dy++) {
+        if (value === 4) {
+          for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
               const nx = x + dx
               const ny = y + dy
-              if(nx >= 0 && nx < board.self.length && ny >= 0 && ny < board.self.length) {
-                if(board.self[nx]?.[ny] === 0) {
+              if (nx >= 0 && nx < board.self.length && ny >= 0 && ny < board.self.length) {
+                if (board.self[nx]?.[ny] === 0) {
                   board.self[nx][ny] = 1
                 }
               }
@@ -262,13 +268,13 @@ async function fetchBoard() {
     })
     board.opponent.forEach((row, x) => {
       row.forEach((value, y) => {
-        if(value === 4) {
-          for(let dx = -1; dx <= 1; dx++) {
-            for(let dy = -1; dy <= 1; dy++) {
+        if (value === 4) {
+          for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
               const nx = x + dx
               const ny = y + dy
-              if(nx >= 0 && nx < board.opponent.length && ny >= 0 && ny < board.opponent.length) {
-                if(board.opponent[nx]?.[ny] === 0) {
+              if (nx >= 0 && nx < board.opponent.length && ny >= 0 && ny < board.opponent.length) {
+                if (board.opponent[nx]?.[ny] === 0) {
                   board.opponent[nx][ny] = 1
                 }
               }
@@ -482,12 +488,7 @@ fetchShips()
         </div>
         <label class="field">
           <span>服务器地址</span>
-          <input
-            v-model="serverBase"
-            type="text"
-            spellcheck="false"
-            placeholder="留空以使用默认服务器"
-          />
+          <input v-model="serverBase" type="text" spellcheck="false" placeholder="留空以使用默认服务器" />
           <small class="hint">默认服务器：http://localhost:8000</small>
         </label>
         <label class="field inline">
@@ -563,7 +564,7 @@ fetchShips()
         </div>
       </article>
 
-      <article class="panel board" :style="{ 'order' : playerId === 2 ? 2 : 1}">
+      <article class="panel board" :style="{ 'order': playerId === 2 ? 2 : 1 }">
         <div class="panel-header">
           <h2>棋盘可视化</h2>
           <small>{{ playerId == 2 ? "仅能查看双方明面信息" : "点击敌方棋盘对应格即可立即发起攻击" }}</small>
@@ -573,14 +574,9 @@ fetchShips()
             <div class="board-title">{{ playerId == 2 ? "玩家 A 舰队" : "己方舰队" }}</div>
             <div class="grid-shell" :style="{ '--size': boardLength }">
               <div v-for="(row, rowIndex) in selfBoard" :key="`self-${rowIndex}`" class="board-row">
-                <button
-                  v-for="(value, colIndex) in row"
-                  :key="`self-${rowIndex}-${colIndex}`"
-                  class="board-cell"
-                  :class="cellTone(value, 'self', rowIndex, colIndex)"
-                  disabled
-                  :aria-label="`${playerId == 2 ? '玩家 A ' : '己方'} (${rowIndex}, ${colIndex}) 状态 ${boardLegend[value]?.label ?? '未知'}`"
-                ></button>
+                <button v-for="(value, colIndex) in row" :key="`self-${rowIndex}-${colIndex}`" class="board-cell"
+                  :class="cellTone(value, 'self', rowIndex, colIndex)" disabled
+                  :aria-label="`${playerId == 2 ? '玩家 A ' : '己方'} (${rowIndex}, ${colIndex}) 状态 ${boardLegend[value]?.label ?? '未知'}`"></button>
               </div>
             </div>
           </div>
@@ -588,15 +584,11 @@ fetchShips()
             <div class="board-title">{{ playerId == 2 ? "玩家 B 舰队" : "敌方水域" }}</div>
             <div class="grid-shell" :style="{ '--size': boardLength }">
               <div v-for="(row, rowIndex) in opponentBoard" :key="`op-${rowIndex}`" class="board-row">
-                <button
-                  v-for="(value, colIndex) in row"
-                  :key="`op-${rowIndex}-${colIndex}`"
-                  class="board-cell"
+                <button v-for="(value, colIndex) in row" :key="`op-${rowIndex}-${colIndex}`" class="board-cell"
                   :class="cellTone(value, 'opponent', rowIndex, colIndex)"
                   :disabled="attacking || !(statusState === playerId + 1) || playerId === 2"
                   @click="value === 0 && handleAttack(rowIndex, colIndex)"
-                  :aria-label="`${playerId == 2 ? '玩家 B ' : '敌方'} (${rowIndex}, ${colIndex}) 状态 ${boardLegend[value]?.label ?? '未知'}`"
-                ></button>
+                  :aria-label="`${playerId == 2 ? '玩家 B ' : '敌方'} (${rowIndex}, ${colIndex}) 状态 ${boardLegend[value]?.label ?? '未知'}`"></button>
               </div>
             </div>
           </div>
@@ -616,7 +608,7 @@ fetchShips()
         </div>
       </article>
 
-      <article class="panel" :class="[{'status' : playerId !== 2}]" :style="{ 'order' : playerId === 2 ? 1 : 2}">
+      <article class="panel" :class="[{ 'status': playerId !== 2 }]" :style="{ 'order': playerId === 2 ? 1 : 2 }">
         <div class="panel-header">
           <h2>损耗概览</h2>
           <small>展示双方剩余舰船与击沉数量</small>
@@ -843,6 +835,7 @@ button:hover:not(:disabled) {
   .board {
     grid-column: span 1;
   }
+
   .hero {
     flex-direction: column;
   }
