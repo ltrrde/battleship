@@ -110,7 +110,7 @@ function createEmptyBoard(size: number) {
 
 function log(message: string) {
   const stamp = new Date().toLocaleTimeString()
-  logEntries.value = [`[${stamp}] ${message}`, ...logEntries.value.slice(0, 99)]
+  logEntries.value = [`[${stamp}] ${message}`, ...logEntries.value.slice(0, 9)]
 }
 
 async function request<T>(path: string, init?: RequestInit) {
@@ -633,7 +633,7 @@ fetchShips()
         </div>
       </article>
 
-      <article class="panel" :class="[{ 'status': playerId !== 2 }]" :style="{ 'order': playerId === 2 ? 1 : 2 }">
+      <article class="panel status" :style="{ 'order': playerId === 2 ? 1 : 2 }">
         <div class="panel-header">
           <h2>损耗概览</h2>
           <small>展示双方剩余舰船与击沉数量</small>
@@ -658,6 +658,32 @@ fetchShips()
         </div>
         <p v-else class="placeholder">暂无舰船统计，点击 “舰船毁伤”。</p>
       </article>
+
+      <article class="panel analysis">
+        <div class="panel-header">
+          <h2>战绩分析</h2>
+          <small>展示命中率</small>
+        </div>
+        <div class="fleet-status">
+          <div class="fleet-column">
+            <h3>{{ playerId == 2 ? "玩家 A" : "己方" }}</h3>
+            <ul>
+              <li>总攻击次数：{{ opponentBoard.flat().filter(num => (num === 1) || (num === 3) || (num === 4)).length }}</li>
+              <li>命中次数：{{ opponentBoard.flat().filter(num => (num === 3) || (num === 4)).length }}</li>
+              <li>命中率：{{ ((opponentBoard.flat().filter(num => (num === 3) || (num === 4)).length / opponentBoard.flat().filter(num => (num === 1) || (num === 3) || (num === 4)).length) * 100).toFixed(2) }}%</li>
+            </ul>
+          </div>
+          <div class="fleet-column">
+            <h3>{{ playerId == 2 ? "玩家 B" : "敌方" }}</h3>
+            <ul>
+              <li>总攻击次数：{{ selfBoard.flat().filter(num => (num === 1) || (num === 3) || (num === 4)).length }}</li>
+              <li>命中次数：{{ selfBoard.flat().filter(num => (num === 3) || (num === 4)).length }}</li>
+              <li>命中率：{{ ((selfBoard.flat().filter(num => (num === 3) || (num === 4)).length / selfBoard.flat().filter(num => (num === 1) || (num === 3) || (num === 4)).length) * 100).toFixed(2) }}%</li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
     </section>
   </div>
 </template>
@@ -849,7 +875,12 @@ button:hover:not(:disabled) {
 }
 
 .status {
-  grid-column: span 2;
+  grid-column: span 1;
+}
+
+.analysis {
+  grid-column: span 1;
+  order: 3;
 }
 
 .logs {

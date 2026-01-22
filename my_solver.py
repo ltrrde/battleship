@@ -132,48 +132,50 @@ def generate_ships(conf):
     ships_req = conf["ships"]
     ships_layout = {}
     sim_board = np.zeros((size, size), dtype=bool)
-    for ship_size in sorted([ss for ss in ships_req for _ in range(ships_req[ss])], key=lambda x: np.random.rand()):
+    for ship_size in ships_req:
         ships_layout[ship_size] = []
+    for ship_size in sorted([ss for ss in ships_req for _ in range(ships_req[ss])], key=lambda x: np.random.rand()):
         kernel_h = np.ones((ship_size, 1), dtype=int)
         kernel_v = np.ones((1, ship_size), dtype=int)
-        for _ in range(ships_req[ship_size]):
-            attack_map = generate_attack_map(mask_board(np.where(sim_board, 4, 0)), {ship_size: [ships_req[ship_size], 0]})
-            scores_h = conv2d(attack_map.astype(int), kernel_h)
-            scores_v = conv2d(attack_map.astype(int), kernel_v)
-            while True:
-                if np.random.rand() < RANDOM_PROB:
-                    d = int(np.random.choice([0, 1]))
-                    if d == 0:
-                        x = int(np.random.randint(0, size - ship_size + 1))
-                        y = int(np.random.randint(0, size))
-                        if np.any(sim_board[max(0,x-1):min(size,x+ship_size+1), max(0,y-1):min(size,y+2)]):
-                            continue
-                        sim_board[x:x+ship_size, y] = True
-                    else:
-                        x = np.random.randint(0, size)
-                        y = np.random.randint(0, size - ship_size + 1)
-                        if np.any(sim_board[max(0,x-1):min(size,x+2), max(0,y-1):min(size,y+ship_size+1)]):
-                            continue
-                        sim_board[x, y:y+ship_size] = True
+        attack_map = generate_attack_map(mask_board(np.where(sim_board, 4, 0)), {ship_size: [ships_req[ship_size], 0]})
+        scores_h = conv2d(attack_map.astype(int), kernel_h)
+        scores_v = conv2d(attack_map.astype(int), kernel_v)
+        for _ in range(1000):
+            if np.random.rand() < RANDOM_PROB:
+                d = int(np.random.choice([0, 1]))
+                if d == 0:
+                    x = int(np.random.randint(0, size - ship_size + 1))
+                    y = int(np.random.randint(0, size))
+                    if np.any(sim_board[max(0,x-1):min(size,x+ship_size+1), max(0,y-1):min(size,y+2)]):
+                        continue
+                    sim_board[x:x+ship_size, y] = True
                 else:
-                    if scores_h.min() == np.inf and scores_v.min() == np.inf:
-                        raise Exception("Failed to place ships without overlap.")
-                    if scores_h.min() <= scores_v.min():
-                        x, y = np.unravel_index(np.random.choice(np.where(scores_h.ravel() == scores_h.min())[0]), scores_h.shape)
-                        scores_h[x, y] = np.iinfo(int).max
-                        x, y, d = int(x), int(y), 0
-                        if np.any(sim_board[max(0,x-1):min(size,x+ship_size+1), max(0,y-1):min(size,y+2)]):
-                            continue
-                        sim_board[x:x+ship_size, y] = True
-                    else:
-                        x, y = np.unravel_index(np.random.choice(np.where(scores_v.ravel() == scores_v.min())[0]), scores_v.shape)
-                        scores_v[x, y] = np.iinfo(int).max
-                        x, y, d = int(x), int(y), 1
-                        if np.any(sim_board[max(0,x-1):min(size,x+2), max(0,y-1):min(size,y+ship_size+1)]):
-                            continue
-                        sim_board[x, y:y+ship_size] = True
-                ships_layout[ship_size].append((x, y, d))
-                break
+                    x = np.random.randint(0, size)
+                    y = np.random.randint(0, size - ship_size + 1)
+                    if np.any(sim_board[max(0,x-1):min(size,x+2), max(0,y-1):min(size,y+ship_size+1)]):
+                        continue
+                    sim_board[x, y:y+ship_size] = True
+            else:
+                if scores_h.min() == np.inf and scores_v.min() == np.inf:
+                    raise Exception("Failed to place ships")
+                if scores_h.min() <= scores_v.min():
+                    x, y = np.unravel_index(np.random.choice(np.where(scores_h.ravel() == scores_h.min())[0]), scores_h.shape)
+                    scores_h[x, y] = np.iinfo(int).max
+                    x, y, d = int(x), int(y), 0
+                    if np.any(sim_board[max(0,x-1):min(size,x+ship_size+1), max(0,y-1):min(size,y+2)]):
+                        continue
+                    sim_board[x:x+ship_size, y] = True
+                else:
+                    x, y = np.unravel_index(np.random.choice(np.where(scores_v.ravel() == scores_v.min())[0]), scores_v.shape)
+                    scores_v[x, y] = np.iinfo(int).max
+                    x, y, d = int(x), int(y), 1
+                    if np.any(sim_board[max(0,x-1):min(size,x+2), max(0,y-1):min(size,y+ship_size+1)]):
+                        continue
+                    sim_board[x, y:y+ship_size] = True
+            ships_layout[ship_size].append((x, y, d))
+            break
+        else:
+            raise Exception("Failed to place ships")
     return ships_layout
 
 def try_attack():
@@ -207,7 +209,7 @@ async def algorithm():
         print("Ships submitted.")
         ready(baseurl, player)
         print(f"Player{player} ready.")
-    elif state == 4 or state == 5:
+    elif state == 3 or state == 4:
         print("Game has ended.")
         return
     else:
