@@ -80,7 +80,7 @@ const boardLegend: Record<number, { label: string; tone: string }> = {
   3: { label: '命中', tone: 'hit' },
   4: { label: '击沉', tone: 'sunk' },
   5: { label: '终结', tone: 'victory' },
-  6: { label: '推测空', tone: 'guess'}
+  6: { label: '推测空', tone: 'guess' }
 }
 
 const boardLength = computed(() => {
@@ -264,6 +264,18 @@ async function fetchBoard() {
               }
             }
           }
+        } else if (value === 3) {
+          for (let dx = -1; dx <= 1; dx += 2) {
+            for (let dy = -1; dy <= 1; dy += 2) {
+              const nx = x + dx
+              const ny = y + dy
+              if (nx >= 0 && nx < board.self.length && ny >= 0 && ny < board.self.length) {
+                if (board.self[nx]?.[ny] === 0) {
+                  board.self[nx][ny] = 6
+                }
+              }
+            }
+          }
         }
       })
     })
@@ -272,6 +284,18 @@ async function fetchBoard() {
         if (value === 4) {
           for (let dx = -1; dx <= 1; dx++) {
             for (let dy = -1; dy <= 1; dy++) {
+              const nx = x + dx
+              const ny = y + dy
+              if (nx >= 0 && nx < board.opponent.length && ny >= 0 && ny < board.opponent.length) {
+                if (board.opponent[nx]?.[ny] === 0) {
+                  board.opponent[nx][ny] = 6
+                }
+              }
+            }
+          }
+        } else if (value === 3) {
+          for (let dx = -1; dx <= 1; dx += 2) {
+            for (let dy = -1; dy <= 1; dy += 2) {
               const nx = x + dx
               const ny = y + dy
               if (nx >= 0 && nx < board.opponent.length && ny >= 0 && ny < board.opponent.length) {
