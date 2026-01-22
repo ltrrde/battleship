@@ -1,7 +1,6 @@
 import numpy as np
 from time import sleep
 from utils import get_board, get_state, attack, get_config, submit_ships, ready, get_ships_info
-from utils import generate_ships_layout
 from utils import ws_connect, wait_call
 import asyncio
 
@@ -131,7 +130,35 @@ def generate_attack_map(board:np.ndarray, ships):
 def generate_ships(conf):
     size = conf["size"]
     ships_req = conf["ships"]
-    ships_layout = generate_ships_layout(size, ships_req)
+    ships_layout = {}
+    sim_board = np.zeros((size, size), dtype=bool)
+    for ship_size in sorted([ss for ss in ships_req for _ in range(ships_req[ss])], key=lambda x: np.random.rand()):
+        ships_layout[ship_size] = []
+        kernel_h = np.ones((ship_size, 1), dtype=int)
+        kernel_v = np.ones((1, ship_size), dtype=int)
+        for _ in range(ships_req[ship_size]):
+            attack_map = generate_attack_map(mask_board(np.where(sim_board, 4, 0)), {ship_size: [ships_req[ship_size], 0]})
+            scores_h = conv2d(attack_map.astype(int), kernel_h)
+            scores_v = conv2d(attack_map.astype(int), kernel_v)
+            while True:
+                if scores_h.min() == np.inf and scores_v.min() == np.inf:
+                    raise Exception("Failed to place ships without overlap.")
+                if scores_h.min() <= scores_v.min():
+                    x, y = np.unravel_index(np.random.choice(np.where(scores_h.ravel() == scores_h.min())[0]), scores_h.shape)
+                    scores_h[x, y] = np.iinfo(int).max
+                    x, y, d = int(x), int(y), 0
+                    if np.any(sim_board[max(0,x-1):min(size,x+ship_size+1), max(0,y-1):min(size,y+2)]):
+                        continue
+                    sim_board[x:x+ship_size, y] = True
+                else:
+                    x, y = np.unravel_index(np.random.choice(np.where(scores_v.ravel() == scores_v.min())[0]), scores_v.shape)
+                    scores_v[x, y] = np.iinfo(int).max
+                    x, y, d = int(x), int(y), 1
+                    if np.any(sim_board[max(0,x-1):min(size,x+2), max(0,y-1):min(size,y+ship_size+1)]):
+                        continue
+                    sim_board[x, y:y+ship_size] = True
+                ships_layout[ship_size].append((x, y, d))
+                break
     return ships_layout
 
 def try_attack():
