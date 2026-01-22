@@ -270,7 +270,8 @@ manager = ConnectionManager()
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["null", "http://localhost:5173"],
+    # allow_origins=["null", "http://127.0.0.1:*", "http://2001:da8:2d02:12c8:ced8:43ff:fec1:7700"],
+    allow_origin_regex=r"http://(127\.0\.0\.1|localhost|\[2001:da8:2d02:12c8:ced8:43ff:fec1:7700\]|\[::1\])(:\d+)?",
     allow_credentials=False,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
@@ -375,4 +376,4 @@ game = Game(*conf)
 
 if __name__ == "__main__":
     threading.Thread(target=lambda: asyncio.run(manager.heartbeat()), daemon=True).start()
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="::", port=8000)

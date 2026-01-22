@@ -110,7 +110,7 @@ function createEmptyBoard(size: number) {
 
 function log(message: string) {
   const stamp = new Date().toLocaleTimeString()
-  logEntries.value = [`[${stamp}] ${message}`, ...logEntries.value].slice(0, 120)
+  logEntries.value = [`[${stamp}] ${message}`, ...logEntries.value.slice(0, 99)]
 }
 
 async function request<T>(path: string, init?: RequestInit) {
