@@ -19,6 +19,11 @@ type ShipStatusPayload = {
   player1: Record<string, [number, number]>
 }
 
+type PlacementRecord = {
+  id: number
+  pos: [number, number, number]
+}
+
 const defaultShips: Array<[number, number]> = [
   [5, 1],
   [4, 1],
@@ -28,6 +33,7 @@ const defaultShips: Array<[number, number]> = [
 
 let shipIdSeed = 0
 const nextShipId = () => ++shipIdSeed
+let placementShipIdSeed = 0
 
 const serverBase = ref('')
 const playerId = ref<0 | 1 | 2>(0)
@@ -52,6 +58,15 @@ const attacking = ref(false)
 const wsState = ref<'disconnected' | 'connecting' | 'connected'>('disconnected')
 const wsHeartBeat = ref<string>('---')
 const lastAttack = ref<[number, number] | null>(null)
+const placementBoard = ref<number[][]>(createEmptyBoard(boardSize.value))
+const placementShips = ref<Record<string, PlacementRecord[]>>({})
+const placedShipMeta = ref<Record<number, { length: number; start: [number, number]; orientation: 'horizontal' | 'vertical' }>>({})
+const selectedShipLength = ref<number | null>(null)
+const selectedOrientation = ref<'horizontal' | 'vertical'>('horizontal')
+const shipCounts = ref<Record<string, number>>(shipDrafts.value.reduce((acc, ship) => {
+  acc[String(ship.length)] = ship.count
+  return acc
+}, {} as Record<string, number>))
 
 let ws: WebSocket | null = null
 let refreshTimer: number | null = null
@@ -88,6 +103,8 @@ const boardLength = computed(() => {
   return derived || boardSize.value
 })
 
+const remainingShips = computed(() => shipCounts.value)
+
 const playerLabel = computed(() => (playerId.value === 2 ? "观战" : playerId.value === 0 ? '玩家 A' : '玩家 B'))
 
 const opponentBoard = computed(() => {
@@ -106,6 +123,132 @@ const selfBoard = computed(() => {
 
 function createEmptyBoard(size: number) {
   return Array.from({ length: size }, () => Array.from({ length: size }, () => 0))
+}
+
+function resetPlacementBoard(size = boardSize.value) {
+  placementBoard.value = createEmptyBoard(size)
+  placementShips.value = {}
+  placedShipMeta.value = {}
+  placementShipIdSeed = 0
+  shipCounts.value = shipDrafts.value.reduce((acc, ship) => {
+    acc[String(ship.length)] = ship.count
+    return acc
+  }, {} as Record<string, number>)
+  selectedShipLength.value = null
+}
+
+function selectShip(length: number) {
+  const available = remainingShips.value[String(length)] ?? 0
+  if (available <= 0 && selectedShipLength.value !== length) {
+    log('该舰型已全部布置，再次点击已有舰船以移除')
+    return
+  }
+  selectedShipLength.value = selectedShipLength.value === length ? null : length
+}
+
+function handlePlacementClick(row: number, col: number) {
+  const existingShipId = placementBoard.value?.[row]?.[col]
+  if (existingShipId) {
+    removePlacedShip(existingShipId)
+    return
+  }
+  if (selectedShipLength.value == null) {
+    log('请先在上方选择舰长再放置舰船')
+    return
+  }
+  const length = selectedShipLength.value
+  const available = remainingShips.value[String(length)] ?? 0
+  if (available <= 0) {
+    log('该舰型数量已用尽，可点击已有舰船以调整位置')
+    return
+  }
+  const orientation = selectedOrientation.value
+  if (!canPlaceShip(row, col, length, orientation)) {
+    log('无法在该位置放置：越界、冲突或与其他舰船相邻')
+    return
+  }
+  placeShip(row, col, length, orientation)
+}
+
+function canPlaceShip(row: number, col: number, length: number, orientation: 'horizontal' | 'vertical') {
+  const size = boardSize.value
+  if (orientation === 'horizontal') {
+    if (col + length > size) return false
+  } else {
+    if (row + length > size) return false
+  }
+  for (let i = 0; i < length; i++) {
+    const x = row + (orientation === 'vertical' ? i : 0)
+    const y = col + (orientation === 'horizontal' ? i : 0)
+    if (placementBoard.value?.[x]?.[y] !== 0) return false
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const nx = x + dx
+        const ny = y + dy
+        if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue
+        if (placementBoard.value?.[nx]?.[ny] !== 0) return false
+      }
+    }
+  }
+  return true
+}
+
+function placeShip(row: number, col: number, length: number, orientation: 'horizontal' | 'vertical') {
+  const shipId = ++placementShipIdSeed
+  for (let i = 0; i < length; i++) {
+    const x = row + (orientation === 'vertical' ? i : 0)
+    const y = col + (orientation === 'horizontal' ? i : 0)
+    const boardRow = placementBoard.value[x]
+    if (!boardRow) {
+      throw new Error(`非法的布阵坐标 (${x}, ${y})`)
+    }
+    boardRow[y] = shipId
+  }
+  placedShipMeta.value = {
+    ...placedShipMeta.value,
+    [shipId]: { length, start: [row, col], orientation }
+  }
+  const key = String(length)
+  const directionCode = orientation === 'horizontal' ? 1 : 0
+  const payloadRecord: PlacementRecord = { id: shipId, pos: [row, col, directionCode] }
+  placementShips.value = {
+    ...placementShips.value,
+    [key]: [...(placementShips.value[key] ?? []), payloadRecord],
+  }
+  shipCounts.value = {
+    ...shipCounts.value,
+    [key]: (shipCounts.value[key] ?? 0) - 1,
+  }
+  if ((shipCounts.value[key] ?? 0) <= 0 && selectedShipLength.value === length) {
+    selectedShipLength.value = null
+  }
+}
+
+function removePlacedShip(shipId: number) {
+  const meta = placedShipMeta.value[shipId]
+  if (!meta) return
+  const { length, start, orientation } = meta
+  for (let i = 0; i < length; i++) {
+    const x = start[0] + (orientation === 'vertical' ? i : 0)
+    const y = start[1] + (orientation === 'horizontal' ? i : 0)
+    const boardRow = placementBoard.value[x]
+    if (!boardRow) {
+      continue
+    }
+    boardRow[y] = 0
+  }
+  const key = String(length)
+  const filtered = (placementShips.value[key] ?? []).filter((record) => record.id !== shipId)
+  const nextPayload = { ...placementShips.value, [key]: filtered }
+  if (filtered.length === 0) {
+    delete nextPayload[key]
+  }
+  placementShips.value = nextPayload
+  const nextCounts = { ...shipCounts.value, [key]: (shipCounts.value[key] ?? 0) + 1 }
+  shipCounts.value = nextCounts
+  const nextMeta = { ...placedShipMeta.value }
+  delete nextMeta[shipId]
+  placedShipMeta.value = nextMeta
 }
 
 function log(message: string) {
@@ -164,6 +307,7 @@ async function syncConfig() {
       count,
     }))
     log('配置已同步')
+    resetPlacementBoard(data.size)
   } catch (error) {
     log((error as Error).message)
   } finally {
@@ -192,6 +336,7 @@ async function resetMatch() {
     await request('/config/reset')
     boardState.value = { self: [], opponent: [] }
     statusState.value = null
+    resetPlacementBoard()
     log('对局已重置')
   } catch (error) {
     log((error as Error).message)
@@ -201,17 +346,24 @@ async function resetMatch() {
 }
 
 async function submitFleet() {
+  const pending = Object.entries(shipCounts.value).filter(([, count]) => count > 0)
+  if (pending.length) {
+    log(`仍有舰船未布置：${pending.map(([length, count]) => `${length}格×${count}`).join('，')}`)
+    return
+  }
+  const shipsPayload = Object.entries(placementShips.value).reduce<Record<string, number[][]>>((acc, [length, records]) => {
+    acc[length] = records.map((record) => record.pos)
+    return acc
+  }, {})
+  if (!Object.keys(shipsPayload).length) {
+    log('请先在布阵棋盘上放置舰船')
+    return
+  }
   try {
     isBusy.value = true
-    let ships: Record<string, number[][]>
-    try {
-      ships = JSON.parse(layoutInput.value)
-    } catch (parseError) {
-      throw new Error('舰队布局 JSON 解析失败')
-    }
     await request('/game/submit', {
       method: 'POST',
-      body: JSON.stringify({ player: playerId.value, ships }),
+      body: JSON.stringify({ player: playerId.value, ships: shipsPayload }),
     })
     log('舰队布阵已提交')
   } catch (error) {
@@ -309,6 +461,9 @@ async function fetchBoard() {
       })
     })
     boardState.value = board
+    if (!Object.keys(placementShips.value).length) {
+      resetPlacementBoard(boardSize.value)
+    }
   } catch (error) {
     log((error as Error).message)
   }
@@ -570,9 +725,49 @@ fetchShips()
       <article class="panel layout" v-if="playerId != 2">
         <div class="panel-header">
           <h2>布阵提交</h2>
-          <small>使用 API 识别的 JSON 描述舰船 [x, y, d] 信息</small>
+          <small>点击下方棋盘放置舰船，可旋转方向</small>
         </div>
-        <textarea v-model="layoutInput" rows="10"></textarea>
+        <div class="placement-controls">
+          <div class="ship-picker">
+            <button
+              v-for="ship in shipDrafts"
+              :key="`draft-${ship.id}`"
+              class="ship-pill"
+              :class="{ active: selectedShipLength === ship.length }"
+              :disabled="remainingShips[String(ship.length)] === 0"
+              @click="selectShip(ship.length)"
+            >
+              {{ ship.length }} 格 × {{ remainingShips[String(ship.length)] ?? 0 }}
+            </button>
+          </div>
+          <div class="orientation">
+            <span>方向：</span>
+            <button
+              class="ship-pill"
+              :class="{ active: selectedOrientation === 'horizontal' }"
+              @click="selectedOrientation = 'horizontal'"
+            >水平</button>
+            <button
+              class="ship-pill"
+              :class="{ active: selectedOrientation === 'vertical' }"
+              @click="selectedOrientation = 'vertical'"
+            >垂直</button>
+            <button class="ship-pill ghost" @click="resetPlacementBoard()">清空</button>
+          </div>
+        </div>
+        <div class="placement-board">
+          <div class="grid-shell" :style="{ '--size': boardSize }">
+            <div v-for="(row, rowIndex) in placementBoard" :key="`place-${rowIndex}`" class="board-row">
+              <button
+                v-for="(value, colIndex) in row"
+                :key="`place-${rowIndex}-${colIndex}`"
+                class="board-cell"
+                :class="value === 0 ? 'tone-muted' : 'tone-ally'"
+                @click="handlePlacementClick(rowIndex, colIndex)"
+              ></button>
+            </div>
+          </div>
+        </div>
         <div class="actions">
           <button :disabled="isBusy" @click="submitFleet">提交舰队</button>
           <button :disabled="isBusy" @click="readyUp">准备就绪</button>
@@ -642,7 +837,7 @@ fetchShips()
           <div class="fleet-column">
             <h3>{{ playerId == 2 ? "玩家 A" : "己方" }}</h3>
             <ul>
-              <li v-for="(pair, key) in shipsState.player0" :key="`p0-${key}`">
+              <li v-for="(pair, key) in playerId == 0 ? shipsState.player0 : shipsState.player1" :key="`p0-${key}`">
                 {{ key }} 长：存活 {{ pair[0] }} / 击沉 {{ pair[1] }}
               </li>
             </ul>
@@ -650,7 +845,7 @@ fetchShips()
           <div class="fleet-column">
             <h3>{{ playerId == 2 ? "玩家 B" : "敌方" }}</h3>
             <ul>
-              <li v-for="(pair, key) in shipsState.player1" :key="`p1-${key}`">
+              <li v-for="(pair, key) in playerId == 0 ? shipsState.player1 : shipsState.player0" :key="`p1-${key}`">
                 {{ key }} 长：存活 {{ pair[0] }} / 击沉 {{ pair[1] }}
               </li>
             </ul>
@@ -834,7 +1029,6 @@ textarea {
 
 .ship-row button,
 .actions button,
-.attack-fields button,
 .ws-controls button {
   border: none;
   border-radius: 0.9rem;
@@ -1018,6 +1212,45 @@ button:hover:not(:disabled) {
   gap: 1rem;
   margin-top: 1rem;
   flex-wrap: wrap;
+}
+
+.placement-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1.2rem;
+}
+
+.ship-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.ship-pill {
+  border: 1px solid rgba(96, 165, 250, 0.5);
+  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.08);
+  color: #1f2942;
+  padding: 0.4rem 1rem;
+  cursor: pointer;
+}
+
+.ship-pill.active {
+  background: linear-gradient(120deg, #38bdf8, #6366f1);
+  color: #fff;
+}
+
+.ship-pill:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.placement-board {
+  border: 1px dashed rgba(36, 45, 68, 0.2);
+  border-radius: 1rem;
+  padding: 0.75rem;
+  background: rgba(248, 250, 255, 0.7);
 }
 
 .fleet-status {
